@@ -61,11 +61,7 @@ async function sb(path, options = {}) {
 }
 
 async function getOrCreateProfile(){
-  let perfilId = null;
-  try{
-    const r = await window.storage.get('perfil_id');
-    perfilId = r.value;
-  }catch(e){ /* no existe aún */ }
+  let perfilId = localStorage.getItem('perfil_id');
 
   if(perfilId){
     const filas = await sb(`profesores?id=eq.${perfilId}&select=*`);
@@ -78,7 +74,7 @@ async function getOrCreateProfile(){
     body: JSON.stringify({ usos: 0, plan_activo: false })
   });
   const perfil = nuevos[0];
-  await window.storage.set('perfil_id', perfil.id);
+  localStorage.setItem('perfil_id', perfil.id);
   return perfil;
 }
 
