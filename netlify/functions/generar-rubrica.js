@@ -16,9 +16,11 @@ exports.handler = async (event) => {
 
 Basa la rúbrica en los 5 desempeños oficiales del Dominio 2 (Enseñanza para el aprendizaje) del Marco de Buen Desempeño Docente, adaptando los indicadores de cada nivel (I a IV) al tema y nivel dados, de forma concreta y observable.
 
+Además, sugiere 3 a 4 actividades concretas y prácticas que el profesor podría usar en esa sesión sobre "${tema}", listas para aplicar sin necesitar más preparación.
+
 Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, con esta forma exacta:
-{"desempenos":[{"nombre":"...","niveles":{"I":"...","II":"...","III":"...","IV":"..."}}]}
-Debe incluir exactamente 5 desempeños. Cada descripción de nivel debe ser concisa, máximo 20 palabras. El JSON debe ser válido y estar completo: sin comas finales sobrantes, sin comentarios, sin texto antes o después.`;
+{"actividades":["...","...","..."],"desempenos":[{"nombre":"...","niveles":{"I":"...","II":"...","III":"...","IV":"..."}}]}
+Debe incluir exactamente 5 desempeños y entre 3 y 4 actividades. Cada actividad debe ser concreta y accionable, máximo 25 palabras. Cada descripción de nivel debe ser concisa, máximo 20 palabras. El JSON debe ser válido y estar completo: sin comas finales sobrantes, sin comentarios, sin texto antes o después.`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
