@@ -34,6 +34,11 @@
 const {useState,useEffect,useRef} = React;
 
 const NIVELES = ["Inicial","Primaria","Secundaria"];
+const GRADOS_POR_NIVEL = {
+  "Inicial": ["3 años","4 años","5 años"],
+  "Primaria": ["1° grado","2° grado","3° grado","4° grado","5° grado","6° grado"],
+  "Secundaria": ["1° grado","2° grado","3° grado","4° grado","5° grado"]
+};
 const TRIAL_LIMIT = 3;
 
 // --- Supabase, vía fetch directo (sin librería externa) ---
@@ -235,8 +240,14 @@ function RubricaView({rubrica, actividades, tema, onNueva}){
 
 function Formulario({onGenerar, cargando, error}){
   const [nivel,setNivel] = useState("Primaria");
+  const [grado,setGrado] = useState(GRADOS_POR_NIVEL["Primaria"][0]);
   const [area,setArea] = useState("");
   const [tema,setTema] = useState("");
+
+  const cambiarNivel = (n) => {
+    setNivel(n);
+    setGrado(GRADOS_POR_NIVEL[n][0]);
+  };
 
   return (
     <div style={{maxWidth:520,margin:'0 auto',padding:'32px 20px'}}>
@@ -248,7 +259,7 @@ function Formulario({onGenerar, cargando, error}){
       <label className="mono" style={{fontSize:12,color:'var(--text-dim)'}}>NIVEL</label>
       <div style={{display:'flex',gap:8,margin:'8px 0 18px'}}>
         {NIVELES.map(n=>(
-          <button key={n} onClick={()=>setNivel(n)} style={{
+          <button key={n} onClick={()=>cambiarNivel(n)} style={{
             flex:1,padding:'10px 0',borderRadius:10,fontSize:13,
             border: nivel===n ? '1px solid var(--coral)' : '1px solid var(--card-border)',
             background: nivel===n ? 'var(--coral-dim)' : 'transparent',
@@ -256,6 +267,14 @@ function Formulario({onGenerar, cargando, error}){
           }}>{n}</button>
         ))}
       </div>
+
+      <label className="mono" style={{fontSize:12,color:'var(--text-dim)'}}>GRADO / EDAD</label>
+      <select
+        value={grado} onChange={e=>setGrado(e.target.value)}
+        style={{width:'100%',padding:'12px 14px',borderRadius:10,border:'1px solid var(--card-border)',background:'var(--card)',color:'var(--text)',fontSize:15,margin:'8px 0 18px',appearance:'none'}}
+      >
+        {GRADOS_POR_NIVEL[nivel].map(g=>(<option key={g} value={g}>{g}</option>))}
+      </select>
 
       <label className="mono" style={{fontSize:12,color:'var(--text-dim)'}}>ÁREA CURRICULAR</label>
       <input
@@ -275,7 +294,7 @@ function Formulario({onGenerar, cargando, error}){
       {error && <p style={{color:'#F87171',fontSize:13,marginBottom:12}}>{error}</p>}
 
       <button
-        onClick={()=>onGenerar({nivel,area,tema})}
+        onClick={()=>onGenerar({nivel,grado,area,tema})}
         disabled={cargando || !area.trim() || !tema.trim()}
         style={{
           width:'100%',padding:'15px',borderRadius:12,border:'none',
@@ -312,7 +331,7 @@ function App(){
     return perfil.usos < TRIAL_LIMIT;
   };
 
-  const generar = async ({nivel,area,tema}) => {
+  const generar = async ({nivel,grado,area,tema}) => {
     if(!puedeGenerar()){
       setPantalla('paywall');
       return;
@@ -323,7 +342,7 @@ function App(){
       const response = await fetch("/.netlify/functions/generar-rubrica", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ nivel, area, tema })
+        body: JSON.stringify({ nivel, grado, area, tema })
       });
       if(!response.ok){
         const cuerpoError = await response.text().catch(()=> '');
