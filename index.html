@@ -310,27 +310,15 @@ function App(){
     setCargando(true);
     setError("");
     try{
-      const prompt = `Eres un especialista en evaluación docente del MINEDU (Perú). Genera una rúbrica de observación de aula para una sesión de nivel ${nivel}, área curricular "${area}", con este tema/propósito: "${tema}".
-
-Basa la rúbrica en los 5 desempeños oficiales del Dominio 2 (Enseñanza para el aprendizaje) del Marco de Buen Desempeño Docente, adaptando los indicadores de cada nivel (I a IV) al tema y nivel dados, de forma concreta y observable.
-
-Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, con esta forma exacta:
-{"desempenos":[{"nombre":"...","niveles":{"I":"...","II":"...","III":"...","IV":"..."}}]}
-Debe incluir exactamente 5 desempeños.`;
-
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/.netlify/functions/generar-rubrica", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{role:"user", content: prompt}]
-        })
+        body: JSON.stringify({ nivel, area, tema })
       });
-      const data = await response.json();
-      const textBlock = (data.content || []).find(b=>b.type==='text');
-      const clean = (textBlock?.text || "").replace(/```json|```/g,"").trim();
-      const parsed = JSON.parse(clean);
+      if(!response.ok){
+        throw new Error(`Error del servidor: ${response.status}`);
+      }
+      const parsed = await response.json();
 
       let nuevoPerfil = perfil;
       if(!perfil.plan_activo){
@@ -343,7 +331,7 @@ Debe incluir exactamente 5 desempeños.`;
       setTemaActual(tema);
       setPantalla('rubrica');
     }catch(e){
-      setError("No se pudo generar la rúbrica. Intenta nuevamente.");
+      setError(`No se pudo generar la rúbrica: ${e.message}`);
     }finally{
       setCargando(false);
     }
