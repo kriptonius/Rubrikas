@@ -10,11 +10,11 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { nivel, area, tema } = JSON.parse(event.body);
+    const { nivel, grado, area, tema } = JSON.parse(event.body);
 
-    const prompt = `Eres un especialista en evaluación docente del MINEDU (Perú). Genera una rúbrica de observación de aula para una sesión de nivel ${nivel}, área curricular "${area}", con este tema/propósito: "${tema}".
+    const prompt = `Eres un especialista en evaluación docente del MINEDU (Perú). Genera una rúbrica de observación de aula para una sesión de nivel ${nivel} (${grado}), área curricular "${area}", con este tema/propósito: "${tema}".
 
-Basa la rúbrica en los 5 desempeños oficiales del Dominio 2 (Enseñanza para el aprendizaje) del Marco de Buen Desempeño Docente, adaptando los indicadores de cada nivel (I a IV) al tema y nivel dados, de forma concreta y observable.
+Basa la rúbrica en los 5 desempeños oficiales del Dominio 2 (Enseñanza para el aprendizaje) del Marco de Buen Desempeño Docente, adaptando los indicadores de cada nivel (I a IV) al tema, y calibrando la complejidad exactamente al grado/edad indicado (${grado}) — un indicador para 3 años de Inicial debe ser mucho más simple que uno para 5° de Secundaria, aunque el tema o área sean los mismos.
 
 Además, sugiere 3 a 4 actividades concretas y prácticas que el profesor podría usar en esa sesión sobre "${tema}", listas para aplicar sin necesitar más preparación.
 
