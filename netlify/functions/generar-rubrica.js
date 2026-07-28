@@ -18,7 +18,7 @@ Basa la rúbrica en los 5 desempeños oficiales del Dominio 2 (Enseñanza para e
 
 Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, con esta forma exacta:
 {"desempenos":[{"nombre":"...","niveles":{"I":"...","II":"...","III":"...","IV":"..."}}]}
-Debe incluir exactamente 5 desempeños.`;
+Debe incluir exactamente 5 desempeños. Cada descripción de nivel debe ser concisa, máximo 20 palabras.`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -29,7 +29,7 @@ Debe incluir exactamente 5 desempeños.`;
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 2500,
+        max_tokens: 1800,
         messages: [{ role: "user", content: prompt }]
       })
     });
