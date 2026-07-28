@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rúbrica al Toque — Generador de rúbricas MINEDU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+<style>
+  :root{
+    --bg:#0B0D10;
+    --card:#14171C;
+    --card-border:#22262C;
+    --coral:#FF6B4A;
+    --coral-dim:#FF6B4A22;
+    --text:#EDEEF0;
+    --text-dim:#8B9099;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  #root{min-height:100vh;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  ::selection{background:var(--coral);color:#0B0D10;}
+  button{font-family:inherit;cursor:pointer;}
+  textarea,input,select{font-family:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef} = React;
+
+const NIVELES = ["Inicial","Primaria","Secundaria"];
+const TRIAL_LIMIT = 3;
+
+// --- Supabase, vía fetch directo (sin librería externa) ---
+const SUPABASE_URL = "https://mpjhcqhxpcovatwfnvyo.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_zKTEXp-ZK6fe3ZcmVDpzoQ_ML2bDb0M";
+
+async function sb(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation',
+      ...(options.headers || {})
+    }
+  });
+  if (!res.ok) {
+    const texto = await res.text().catch(()=> '');
+    throw new Error(`Supabase ${res.status}: ${texto}`);
+  }
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) return res.json();
+  return null;
+}
+
+async function getOrCreateProfile(){
+  let perfilId = null;
+  try{
+    const r = await window.storage.get('perfil_id');
+    perfilId = r.value;
+  }catch(e){ /* no existe aún */ }
+
+  if(perfilId){
+    const filas = await sb(`profesores?id=eq.${perfilId}&select=*`);
+    if(filas && filas.length) return filas[0];
+    // si el id local ya no existe en Supabase, cae a crear uno nuevo
+  }
+
+  const nuevos = await sb('profesores', {
+    method: 'POST',
+    body: JSON.stringify({ usos: 0, plan_activo: false })
+  });
+  const perfil = nuevos[0];
+  await window.storage.set('perfil_id', perfil.id);
+  return perfil;
+}
+
+async function incrementarUso(id){
+  const data = await sb('rpc/incrementar_uso', {
+    method: 'POST',
+    body: JSON.stringify({ p_id: id })
+  });
+  return data; // nuevo número de usos
+}
+
+async function asignarMonto(id){
+  const data = await sb('rpc/asignar_monto', {
+    method: 'POST',
+    body: JSON.stringify({ p_id: id })
+  });
+  return data; // ej. 8.03
+}
+
+async function consultarEstado(id){
+  const filas = await sb(`profesores?id=eq.${id}&select=*`);
+  return filas[0];
+}
+
+function diasRestantes(vence_el){
+  if(!vence_el) return 0;
+  const ms = new Date(vence_el).getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms/86400000));
+}
+
+function Logo(){
+  return (
+    <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+      <span style={{fontWeight:700,fontSize:20,letterSpacing:'-0.02em'}}>Rúbrica<span style={{color:'var(--coral)'}}>Al Toque</span></span>
+    </div>
+  );
+}
+
+function Badge({children}){
+  return <span className="mono" style={{fontSize:11,letterSpacing:'0.06em',textTransform:'uppercase',color:'var(--text-dim)',border:'1px solid var(--card-border)',borderRadius:20,padding:'4px 10px'}}>{children}</span>;
+}
+
+function Paywall({usos, perfilId, onActivar}){
+  const [monto,setMonto] = useState(null);
+  const [error,setError] = useState("");
+  const pollingRef = useRef(null);
+
+  useEffect(()=>{
+    asignarMonto(perfilId).then(m=>{
+      setMonto(Number(m).toFixed(2));
+      pollingRef.current = setInterval(async ()=>{
+        try{
+          const actual = await consultarEstado(perfilId);
+          if(actual.plan_activo){
+            clearInterval(pollingRef.current);
+            onActivar(actual);
+          }
+        }catch(e){ /* reintenta en el siguiente ciclo */ }
+      }, 3000);
+    }).catch(()=> setError("No se pudo generar tu monto de pago. Intenta de nuevo."));
+
+    return () => { if(pollingRef.current) clearInterval(pollingRef.current); };
+  },[perfilId]);
+
+  return (
+    <div style={{maxWidth:440,margin:'0 auto',padding:'32px 20px'}}>
+      <Badge>Prueba finalizada</Badge>
+      <h2 style={{fontSize:24,margin:'14px 0 6px'}}>Ya generaste {usos} rúbricas gratis</h2>
+      <p style={{color:'var(--text-dim)',lineHeight:1.5,fontSize:15}}>
+        Para seguir generando rúbricas alineadas a la normativa MINEDU en cada sesión, activa tu plan mensual.
+      </p>
+
+      <div style={{background:'var(--card)',border:'1px solid var(--card-border)',borderRadius:16,padding:20,marginTop:20}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}>
+          <span style={{fontWeight:600,fontSize:16}}>Plan Docente</span>
+          <span className="mono" style={{color:'var(--coral)',fontWeight:600,fontSize:20}}>30 días</span>
+        </div>
+        <ul style={{margin:0,paddingLeft:18,color:'var(--text-dim)',fontSize:14,lineHeight:1.8}}>
+          <li>Rúbricas ilimitadas por 30 días</li>
+          <li>Adaptadas a tu nivel y área curricular</li>
+          <li>Descarga en cualquier momento</li>
+        </ul>
+      </div>
+
+      {error && <p style={{color:'#F87171',fontSize:13,marginTop:16}}>{error}</p>}
+
+      {monto && (
+        <div style={{marginTop:20,textAlign:'center'}}>
+          <p className="mono" style={{fontSize:12,color:'var(--text-dim)',marginBottom:8}}>PAGA EXACTAMENTE ESTE MONTO POR YAPE O PLIN</p>
+          <div style={{background:'var(--card)',border:'1px solid var(--coral)',borderRadius:14,padding:'20px 16px'}}>
+            <p className="mono" style={{fontSize:36,fontWeight:600,color:'var(--coral)',margin:'0 0 8px'}}>S/ {monto}</p>
+            <p style={{fontSize:14,color:'var(--text-dim)',margin:0}}>
+              Yape / Plin: <strong className="mono">948 213 679</strong>
+            </p>
+          </div>
+          <p style={{fontSize:13,color:'var(--text-dim)',marginTop:14,lineHeight:1.5}}>
+            Importante: el monto debe coincidir exacto, con centavos incluidos — así identificamos tu pago automáticamente.
+            Tu plan se activa solo, sin que hagas nada más aquí.
+          </p>
+          <div style={{marginTop:14,color:'var(--text-dim)',fontSize:13}} className="mono">Esperando confirmación...</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RubricaView({rubrica, tema, onNueva}){
+  return (
+    <div style={{maxWidth:720,margin:'0 auto',padding:'24px 20px 60px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:18,gap:12}}>
+        <div>
+          <Badge>Dominio 2 · MBDD</Badge>
+          <h2 style={{fontSize:20,margin:'10px 0 2px'}}>{tema}</h2>
+        </div>
+        <button onClick={onNueva} style={{background:'transparent',border:'1px solid var(--card-border)',color:'var(--text-dim)',borderRadius:10,padding:'8px 14px',fontSize:13,whiteSpace:'nowrap'}}>
+          + Nueva sesión
+        </button>
+      </div>
+
+      {rubrica.map((d,i)=>(
+        <div key={i} style={{background:'var(--card)',border:'1px solid var(--card-border)',borderRadius:14,padding:18,marginBottom:14}}>
+          <p className="mono" style={{fontSize:11,color:'var(--coral)',letterSpacing:'0.05em',textTransform:'uppercase',margin:'0 0 4px'}}>Desempeño {i+1}</p>
+          <h3 style={{fontSize:16,margin:'0 0 12px',lineHeight:1.35}}>{d.nombre}</h3>
+          {["IV","III","II","I"].map(nivel=>(
+            <div key={nivel} style={{display:'flex',gap:12,padding:'10px 0',borderTop:'1px solid var(--card-border)'}}>
+              <span className="mono" style={{
+                flexShrink:0,width:26,height:26,borderRadius:'50%',
+                display:'flex',alignItems:'center',justifyContent:'center',
+                fontSize:12,fontWeight:600,
+                background: nivel==='IV' ? 'var(--coral)' : 'transparent',
+                color: nivel==='IV' ? '#0B0D10' : 'var(--text-dim)',
+                border: nivel==='IV' ? 'none' : '1px solid var(--card-border)'
+              }}>{nivel}</span>
+              <p style={{margin:0,fontSize:14,lineHeight:1.5,color:nivel==='IV'?'var(--text)':'var(--text-dim)'}}>{d.niveles[nivel]}</p>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      <button onClick={()=>window.print()} style={{
+        width:'100%',padding:'14px',borderRadius:12,border:'1px solid var(--card-border)',
+        background:'transparent',color:'var(--text)',fontSize:14,marginTop:6
+      }}>
+        Descargar / Imprimir
+      </button>
+    </div>
+  );
+}
+
+function Formulario({onGenerar, cargando, error}){
+  const [nivel,setNivel] = useState("Primaria");
+  const [area,setArea] = useState("");
+  const [tema,setTema] = useState("");
+
+  return (
+    <div style={{maxWidth:520,margin:'0 auto',padding:'32px 20px'}}>
+      <h1 style={{fontSize:26,lineHeight:1.2,margin:'0 0 8px'}}>Genera la rúbrica de tu clase de hoy</h1>
+      <p style={{color:'var(--text-dim)',fontSize:15,lineHeight:1.5,margin:'0 0 26px'}}>
+        Basada en los 5 desempeños del Dominio 2 del Marco de Buen Desempeño Docente.
+      </p>
+
+      <label className="mono" style={{fontSize:12,color:'var(--text-dim)'}}>NIVEL</label>
+      <div style={{display:'flex',gap:8,margin:'8px 0 18px'}}>
+        {NIVELES.map(n=>(
+          <button key={n} onClick={()=>setNivel(n)} style={{
+            flex:1,padding:'10px 0',borderRadius:10,fontSize:13,
+            border: nivel===n ? '1px solid var(--coral)' : '1px solid var(--card-border)',
+            background: nivel===n ? 'var(--coral-dim)' : 'transparent',
+            color: nivel===n ? 'var(--coral)' : 'var(--text-dim)'
+          }}>{n}</button>
+        ))}
+      </div>
+
+      <label className="mono" style={{fontSize:12,color:'var(--text-dim)'}}>ÁREA CURRICULAR</label>
+      <input
+        value={area} onChange={e=>setArea(e.target.value)}
+        placeholder="Ej. Matemática, Comunicación, Ciencia y Tecnología..."
+        style={{width:'100%',padding:'12px 14px',borderRadius:10,border:'1px solid var(--card-border)',background:'var(--card)',color:'var(--text)',fontSize:15,margin:'8px 0 18px'}}
+      />
+
+      <label className="mono" style={{fontSize:12,color:'var(--text-dim)'}}>TEMA O PROPÓSITO DE LA SESIÓN</label>
+      <textarea
+        value={tema} onChange={e=>setTema(e.target.value)}
+        placeholder="Ej. Resolvemos problemas de fracciones usando material concreto"
+        rows={4}
+        style={{width:'100%',padding:'12px 14px',borderRadius:10,border:'1px solid var(--card-border)',background:'var(--card)',color:'var(--text)',fontSize:15,margin:'8px 0 18px',resize:'vertical'}}
+      />
+
+      {error && <p style={{color:'#F87171',fontSize:13,marginBottom:12}}>{error}</p>}
+
+      <button
+        onClick={()=>onGenerar({nivel,area,tema})}
+        disabled={cargando || !area.trim() || !tema.trim()}
+        style={{
+          width:'100%',padding:'15px',borderRadius:12,border:'none',
+          background:'var(--coral)',color:'#0B0D10',fontWeight:600,fontSize:15,
+          opacity:(cargando || !area.trim() || !tema.trim())?0.5:1
+        }}
+      >
+        {cargando ? "Generando rúbrica..." : "Generar rúbrica"}
+      </button>
+    </div>
+  );
+}
+
+function App(){
+  const [perfil,setPerfil] = useState(null);
+  const [pantalla,setPantalla] = useState('form'); // form | rubrica | paywall
+  const [rubrica,setRubrica] = useState(null);
+  const [temaActual,setTemaActual] = useState("");
+  const [cargando,setCargando] = useState(false);
+  const [error,setError] = useState("");
+  const [errorInicial,setErrorInicial] = useState("");
+
+  useEffect(()=>{
+    getOrCreateProfile().then(p=>{
+      const activo = p.plan_activo && diasRestantes(p.vence_el) > 0;
+      setPerfil({...p, plan_activo: activo});
+    }).catch((e)=> setErrorInicial(`No se pudo conectar: ${e.message}`));
+  },[]);
+
+  const puedeGenerar = () => {
+    if(!perfil) return false;
+    if(perfil.plan_activo) return true;
+    return perfil.usos < TRIAL_LIMIT;
+  };
+
+  const generar = async ({nivel,area,tema}) => {
+    if(!puedeGenerar()){
+      setPantalla('paywall');
+      return;
+    }
+    setCargando(true);
+    setError("");
+    try{
+      const prompt = `Eres un especialista en evaluación docente del MINEDU (Perú). Genera una rúbrica de observación de aula para una sesión de nivel ${nivel}, área curricular "${area}", con este tema/propósito: "${tema}".
+
+Basa la rúbrica en los 5 desempeños oficiales del Dominio 2 (Enseñanza para el aprendizaje) del Marco de Buen Desempeño Docente, adaptando los indicadores de cada nivel (I a IV) al tema y nivel dados, de forma concreta y observable.
+
+Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, con esta forma exacta:
+{"desempenos":[{"nombre":"...","niveles":{"I":"...","II":"...","III":"...","IV":"..."}}]}
+Debe incluir exactamente 5 desempeños.`;
+
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{role:"user", content: prompt}]
+        })
+      });
+      const data = await response.json();
+      const textBlock = (data.content || []).find(b=>b.type==='text');
+      const clean = (textBlock?.text || "").replace(/```json|```/g,"").trim();
+      const parsed = JSON.parse(clean);
+
+      let nuevoPerfil = perfil;
+      if(!perfil.plan_activo){
+        const nuevosUsos = await incrementarUso(perfil.id);
+        nuevoPerfil = {...perfil, usos: nuevosUsos};
+      }
+      setPerfil(nuevoPerfil);
+
+      setRubrica(parsed.desempenos);
+      setTemaActual(tema);
+      setPantalla('rubrica');
+    }catch(e){
+      setError("No se pudo generar la rúbrica. Intenta nuevamente.");
+    }finally{
+      setCargando(false);
+    }
+  };
+
+  const activarPlan = (perfilConfirmado) => {
+    setPerfil(perfilConfirmado);
+    setPantalla('form');
+  };
+
+  if(errorInicial){
+    return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'#F87171',padding:20,textAlign:'center'}}>{errorInicial}</div>;
+  }
+
+  if(!perfil){
+    return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-dim)'}}>Cargando...</div>;
+  }
+
+  return (
+    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'18px 20px',borderBottom:'1px solid var(--card-border)'}}>
+        <Logo/>
+        {perfil.plan_activo
+          ? <Badge>Plan activo · {diasRestantes(perfil.vence_el)}d</Badge>
+          : <Badge>{TRIAL_LIMIT - perfil.usos} rúbricas gratis</Badge>}
+      </div>
+
+      {pantalla==='form' && <Formulario onGenerar={generar} cargando={cargando} error={error}/>}
+      {pantalla==='rubrica' && rubrica && <RubricaView rubrica={rubrica} tema={temaActual} onNueva={()=>setPantalla('form')}/>}
+      {pantalla==='paywall' && <Paywall usos={perfil.usos} perfilId={perfil.id} onActivar={activarPlan}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
