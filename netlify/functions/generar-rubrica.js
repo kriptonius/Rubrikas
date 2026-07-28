@@ -18,7 +18,7 @@ Basa la rúbrica en los 5 desempeños oficiales del Dominio 2 (Enseñanza para e
 
 Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, con esta forma exacta:
 {"desempenos":[{"nombre":"...","niveles":{"I":"...","II":"...","III":"...","IV":"..."}}]}
-Debe incluir exactamente 5 desempeños. Cada descripción de nivel debe ser concisa, máximo 20 palabras.`;
+Debe incluir exactamente 5 desempeños. Cada descripción de nivel debe ser concisa, máximo 20 palabras. El JSON debe ser válido y estar completo: sin comas finales sobrantes, sin comentarios, sin texto antes o después.`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -29,7 +29,7 @@ Debe incluir exactamente 5 desempeños. Cada descripción de nivel debe ser conc
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1800,
+        max_tokens: 2200,
         messages: [{ role: "user", content: prompt }]
       })
     });
@@ -41,8 +41,14 @@ Debe incluir exactamente 5 desempeños. Cada descripción de nivel debe ser conc
 
     const data = await response.json();
     const textBlock = (data.content || []).find(b => b.type === 'text');
-    const clean = (textBlock?.text || "").replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
+    let texto = (textBlock?.text || "").replace(/```json|```/g, "").trim();
+    // Por si el modelo agrega texto antes/después del JSON, nos quedamos solo con lo que está entre { y }
+    const inicio = texto.indexOf('{');
+    const fin = texto.lastIndexOf('}');
+    if (inicio !== -1 && fin !== -1) {
+      texto = texto.slice(inicio, fin + 1);
+    }
+    const parsed = JSON.parse(texto);
 
     return {
       statusCode: 200,
