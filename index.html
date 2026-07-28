@@ -316,7 +316,8 @@ function App(){
         body: JSON.stringify({ nivel, area, tema })
       });
       if(!response.ok){
-        throw new Error(`Error del servidor: ${response.status}`);
+        const cuerpoError = await response.text().catch(()=> '');
+        throw new Error(`${response.status}: ${cuerpoError}`);
       }
       const parsed = await response.json();
 
