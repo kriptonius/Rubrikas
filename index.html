@@ -99,6 +99,13 @@ async function asignarMonto(id){
   return data; // ej. 8.03
 }
 
+async function registrarDni(id, dni){
+  await sb('rpc/registrar_dni', {
+    method: 'POST',
+    body: JSON.stringify({ p_id: id, p_dni: dni })
+  });
+}
+
 async function consultarEstado(id){
   const filas = await sb(`profesores?id=eq.${id}&select=*`);
   return filas[0];
@@ -123,26 +130,64 @@ function Badge({children}){
 }
 
 function Paywall({usos, perfilId, onActivar}){
+  const [dni,setDni] = useState("");
+  const [dniConfirmado,setDniConfirmado] = useState(false);
   const [monto,setMonto] = useState(null);
   const [error,setError] = useState("");
+  const [verificando,setVerificando] = useState(true);
   const pollingRef = useRef(null);
 
+  const empezarPolling = () => {
+    pollingRef.current = setInterval(async ()=>{
+      try{
+        const actual = await consultarEstado(perfilId);
+        if(actual.plan_activo){
+          clearInterval(pollingRef.current);
+          onActivar(actual);
+        }
+      }catch(e){ /* reintenta en el siguiente ciclo */ }
+    }, 3000);
+  };
+
   useEffect(()=>{
-    asignarMonto(perfilId).then(m=>{
-      setMonto(Number(m).toFixed(2));
-      pollingRef.current = setInterval(async ()=>{
-        try{
-          const actual = await consultarEstado(perfilId);
-          if(actual.plan_activo){
-            clearInterval(pollingRef.current);
-            onActivar(actual);
-          }
-        }catch(e){ /* reintenta en el siguiente ciclo */ }
-      }, 3000);
-    }).catch(()=> setError("No se pudo generar tu monto de pago. Intenta de nuevo."));
+    // Si el profesor ya tenía un monto asignado (de una visita anterior sin pagar
+    // todavía), lo reutilizamos en vez de pedir uno nuevo — así el pago que ya
+    // hizo con el monto viejo no queda huérfano.
+    (async () => {
+      try{
+        const perfilActual = await consultarEstado(perfilId);
+        if(perfilActual.monto_asignado){
+          setMonto(Number(perfilActual.monto_asignado).toFixed(2));
+          setDniConfirmado(true);
+          empezarPolling();
+        }
+      }catch(e){ /* si falla, seguimos con el flujo normal de pedir DNI */ }
+      finally{ setVerificando(false); }
+    })();
 
     return () => { if(pollingRef.current) clearInterval(pollingRef.current); };
-  },[perfilId]);
+  },[]);
+
+  const confirmarDni = async () => {
+    if(dni.trim().length < 8){
+      setError("Ingresa tu DNI (8 dígitos).");
+      return;
+    }
+    setError("");
+    try{
+      await registrarDni(perfilId, dni.trim());
+      setDniConfirmado(true);
+      const m = await asignarMonto(perfilId);
+      setMonto(Number(m).toFixed(2));
+      empezarPolling();
+    }catch(e){
+      setError("No se pudo registrar tu DNI. Intenta de nuevo.");
+    }
+  };
+
+  if(verificando){
+    return <div style={{maxWidth:440,margin:'0 auto',padding:'60px 20px',textAlign:'center',color:'var(--text-dim)'}}>Cargando...</div>;
+  }
 
   return (
     <div style={{maxWidth:440,margin:'0 auto',padding:'32px 20px'}}>
@@ -166,6 +211,25 @@ function Paywall({usos, perfilId, onActivar}){
 
       {error && <p style={{color:'#F87171',fontSize:13,marginTop:16}}>{error}</p>}
 
+      {!dniConfirmado && (
+        <div style={{marginTop:20}}>
+          <p className="mono" style={{fontSize:12,color:'var(--text-dim)',marginBottom:6}}>TU DNI (para identificar tu pago)</p>
+          <input
+            value={dni}
+            onChange={e=>setDni(e.target.value.replace(/\D/g,'').slice(0,8))}
+            placeholder="12345678"
+            inputMode="numeric"
+            style={{width:'100%',padding:'12px 14px',borderRadius:10,border:'1px solid var(--card-border)',background:'var(--card)',color:'var(--text)',fontSize:15}}
+          />
+          <button onClick={confirmarDni} style={{
+            width:'100%',marginTop:12,padding:'14px',borderRadius:12,border:'none',
+            background:'var(--coral)',color:'#0B0D10',fontWeight:600,fontSize:15
+          }}>
+            Continuar
+          </button>
+        </div>
+      )}
+
       {monto && (
         <div style={{marginTop:20,textAlign:'center'}}>
           <p className="mono" style={{fontSize:12,color:'var(--text-dim)',marginBottom:8}}>PAGA EXACTAMENTE ESTE MONTO POR YAPE O PLIN</p>
@@ -180,6 +244,9 @@ function Paywall({usos, perfilId, onActivar}){
             Tu plan se activa solo, sin que hagas nada más aquí.
           </p>
           <div style={{marginTop:14,color:'var(--text-dim)',fontSize:13}} className="mono">Esperando confirmación...</div>
+          <p className="mono" style={{fontSize:12,color:'var(--text-dim)',marginTop:20}}>
+            ¿Ya pagaste y no se activó? Escríbenos con tu DNI: <strong>{dni}</strong>
+          </p>
         </div>
       )}
     </div>
@@ -388,6 +455,9 @@ function App(){
         {perfil.plan_activo
           ? <Badge>Plan activo · {diasRestantes(perfil.vence_el)}d</Badge>
           : <Badge>{TRIAL_LIMIT - perfil.usos} rúbricas gratis</Badge>}
+      </div>
+      <div style={{padding:'8px 20px',textAlign:'right'}}>
+        <span className="mono" style={{fontSize:11,color:'var(--text-dim)'}}>Tu código: {perfil.id.slice(0,8)}</span>
       </div>
 
       {pantalla==='form' && <Formulario onGenerar={generar} cargando={cargando} error={error}/>}
