@@ -181,7 +181,7 @@ function Paywall({usos, perfilId, onActivar}){
   );
 }
 
-function RubricaView({rubrica, tema, onNueva}){
+function RubricaView({rubrica, actividades, tema, onNueva}){
   return (
     <div style={{maxWidth:720,margin:'0 auto',padding:'24px 20px 60px'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:18,gap:12}}>
@@ -193,6 +193,15 @@ function RubricaView({rubrica, tema, onNueva}){
           + Nueva sesión
         </button>
       </div>
+
+      {actividades && actividades.length > 0 && (
+        <div style={{background:'var(--card)',border:'1px solid var(--coral)',borderRadius:14,padding:18,marginBottom:20}}>
+          <p className="mono" style={{fontSize:11,color:'var(--coral)',letterSpacing:'0.05em',textTransform:'uppercase',margin:'0 0 10px'}}>Ideas de actividades para esta sesión</p>
+          <ul style={{margin:0,paddingLeft:18,color:'var(--text)',fontSize:14,lineHeight:1.7}}>
+            {actividades.map((a,i)=>(<li key={i} style={{marginBottom:6}}>{a}</li>))}
+          </ul>
+        </div>
+      )}
 
       {rubrica.map((d,i)=>(
         <div key={i} style={{background:'var(--card)',border:'1px solid var(--card-border)',borderRadius:14,padding:18,marginBottom:14}}>
@@ -284,6 +293,7 @@ function App(){
   const [perfil,setPerfil] = useState(null);
   const [pantalla,setPantalla] = useState('form'); // form | rubrica | paywall
   const [rubrica,setRubrica] = useState(null);
+  const [actividades,setActividades] = useState(null);
   const [temaActual,setTemaActual] = useState("");
   const [cargando,setCargando] = useState(false);
   const [error,setError] = useState("");
@@ -329,6 +339,7 @@ function App(){
       setPerfil(nuevoPerfil);
 
       setRubrica(parsed.desempenos);
+      setActividades(parsed.actividades || []);
       setTemaActual(tema);
       setPantalla('rubrica');
     }catch(e){
@@ -361,7 +372,7 @@ function App(){
       </div>
 
       {pantalla==='form' && <Formulario onGenerar={generar} cargando={cargando} error={error}/>}
-      {pantalla==='rubrica' && rubrica && <RubricaView rubrica={rubrica} tema={temaActual} onNueva={()=>setPantalla('form')}/>}
+      {pantalla==='rubrica' && rubrica && <RubricaView rubrica={rubrica} actividades={actividades} tema={temaActual} onNueva={()=>setPantalla('form')}/>}
       {pantalla==='paywall' && <Paywall usos={perfil.usos} perfilId={perfil.id} onActivar={activarPlan}/>}
     </div>
   );
